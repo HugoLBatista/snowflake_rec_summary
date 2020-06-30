@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS session_recommedantion_summary (
 	bounced_visits int null,
 	impressions int null,
 	unique_impressions int null,
+	product_views int null,
 	pages int null,
 	total_revenue float null,
 	total_quantity int null,
