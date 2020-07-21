@@ -1,0 +1,66 @@
+CREATE OR REPLACE FUNCTION process_session(RECOMMENDED variant, CLICKED variant, PURCHASED variant)
+RETURNS variant
+LANGUAGE JAVASCRIPT
+AS '
+  // Create defined arrays for use throughout the rest of the function
+  RECOMMENDED = RECOMMENDED == null ? [] : RECOMMENDED
+  CLICKED = CLICKED == null ? [] : CLICKED
+  PURCHASED = PURCHASED == null ? [] : PURCHASED
+          
+  // Filter items to relevant buckets for 7 fold T/F table
+  var purchased_rec_items = PURCHASED.filter(purch => RECOMMENDED.some(rec => rec.item_id == purch.item_id && purch.time > rec.time))
+  var clicked_rec_items = CLICKED.filter(click => RECOMMENDED.some(rec => rec.item_id == click.item_id && click.time > rec.time))
+  var purchased_clicked_rec_items = purchased_rec_items.filter(purch => clicked_rec_items.some(click => click.item_id == purch.item_id && purch.time > click.time))    
+  
+  // Define the 7 fold T/F table at the session level
+  var has_rec_clicked = CLICKED.length > 0
+  var has_rec_converted = purchased_rec_items.length > 0
+  var has_rec_clicked_converted = purchased_clicked_rec_items.length > 0
+  var has_purchase = PURCHASED.length > 0
+  
+  // Specific metrics of the recommended, clicked, and purchased items  
+  var recommended_clicked_revenue = purchased_clicked_rec_items.map(purch => purch.qty * purch.price).reduceRight((a,b) => a + b, 0.00)
+  var recommended_clicked_items = purchased_clicked_rec_items.map(purch => purch.qty).reduceRight((a,b) => a + b, 0.00)
+  
+  // Purchase item count to be used in multiple metrics depending on what happens in the session
+  var purchased_item_count = PURCHASED.map(purch => purch.qty).reduceRight((a,b) => a + b, 0.00)
+  
+  // Revenue to be used in multiple metrics depending on what happens in the session
+  var revenue_sum = PURCHASED.map(purch => purch.qty * purch.price).reduceRight((a,b) => a + b, 0.00)
+  
+  // Transaction count to be used in multiple metrics depending on what happens in the session
+  var transaction_count = Array.from(new Set(PURCHASED.map(purch => purch.transaction_id))).length
+   
+  return {
+    // Session Count metrics, straightforward logic based on session level 7 fold evaluation, GOOD - only talks about what happens to a session
+    "SESSION_HASRECCLICKED_HASRECCONVERTED_HASRECCLICKEDCONVERTED_HASPURCHASE": has_rec_clicked && has_rec_converted && has_rec_clicked_converted && has_purchase ? 1 : 0,
+    "SESSION_HASRECCLICKED_HASRECCONVERTED_NORECCLICKEDCONVERTED_HASPURCHASE": has_rec_clicked && has_rec_converted && !has_rec_clicked_converted && has_purchase ? 1 : 0,
+    "SESSION_HASRECCLICKED_NORECCONVERTED_NORECCLICKEDCONVERTED_HASPURCHASE": has_rec_clicked && !has_rec_converted && !has_rec_clicked_converted && has_purchase ? 1 : 0,
+    "SESSION_HASRECCLICKED_NORECCONVERTED_NORECCLICKEDCONVERTED_NOPURCHASE": has_rec_clicked && !has_rec_converted && !has_rec_clicked_converted && !has_purchase ? 1 : 0,
+    "SESSION_NORECCLICKED_HASRECCONVERTED_NORECCLIKEDCONVERTED_HASPURCHASE": !has_rec_clicked && has_rec_converted && !has_rec_clicked_converted && has_purchase ? 1 : 0,
+    "SESSION_NORECCLICKED_NORECCONVERTED_NORECCLICKEDCONVERTED_HASPURCHASE": !has_rec_clicked && !has_rec_converted && !has_rec_clicked_converted && has_purchase ? 1 : 0,
+    "SESSION_NORECCLICKED_NORECCONVERTED_NORECCLICKEDCONVERTED_NOPURCHASE": !has_rec_clicked && !has_rec_converted && !has_rec_clicked_converted && !has_purchase ? 1 : 0,    
+    // Revenue metrics, less good - metrics are somewhat deceptive since they attribute all transaction information based on session behavior
+    "SESSION_REVENUE_HASRECCLICKED_HASRECCONVERTED_HASRECCLICKCONVERTED_HASPURCHASE": has_rec_clicked && has_rec_converted && has_rec_clicked_converted && has_purchase ? revenue_sum : 0, //revenue_with_clicks_recconverted_noreclcikedconverted,
+    "SESSION_REVENUE_HASRECCLICKED_HASRECCONVERTED_NORECCLICKCONVERTED_HASPURCHASE": has_rec_clicked && has_rec_converted && !has_rec_clicked_converted && has_purchase ? revenue_sum : 0, //revenue_with_clicks_recconverted_noreclcikedconverted,
+    "SESSION_REVENUE_HASRECCLICKED_NORECCONVERTED_NORECCLICKCONVERTED_HASPURCHASE": has_rec_clicked && !has_rec_converted && !has_rec_clicked_converted && has_purchase ? revenue_sum : 0, //revenue_with_clicks_norecconverted, 
+    "SESSION_REVENUE_NORECCLICKED_HASRECCONVERTED_NORECCLICKEDCONVERTED_HASPURCHASE": !has_rec_clicked && has_rec_converted && !has_rec_clicked_converted && has_purchase ? revenue_sum : 0, //revenue_with_noclicks_recconverted_norecclickedconverted,
+    "SESSION_REVENUE_NORECCLICKED_NORECCONVERTED_NORECCLICKCONVERTED_HASPURCHASE": !has_rec_clicked && !has_rec_converted && !has_rec_clicked_converted && has_purchase ? revenue_sum : 0, //revenue_with_noclicks_norecconverted,        
+    // Transactions, less good - metrics are somewhat deceptive since they attribute all transaction information based on session behavior
+    "SESSION_TRANSACTION_COUNT_HASRECCLICKED_HASRECCONVERTED_HASRECCLICKEDCONVERTED_HASPURCHASE": has_rec_clicked && has_rec_converted && has_rec_clicked_converted && has_purchase ? transaction_count : 0, //transactions_rec_clicked_converted.length
+    "SESSION_TRANSACTION_COUNT_HASRECCLICKED_HASRECCONVERTED_NORECCLICKEDCONVERTED_HASPURCHASE": has_rec_clicked && has_rec_converted && !has_rec_clicked_converted && has_purchase ? transaction_count : 0, //transactions_with_clickedrec_recconverted_noclikedrecconverted_array.length,
+    "SESSION_TRANSACTION_COUNT_HASRECCLICKED_NORECCONVERTED_NORECCLICKEDCONVERTED_HASPURCHASE": has_rec_clicked && !has_rec_converted && !has_rec_clicked_converted && has_purchase ? transaction_count : 0,
+    "SESSION_TRANSACTION_COUNT_NORECCLICKED_HASRECCONVERTED_NORECCLICKEDCONVERTED_HASPURCHASE": !has_rec_clicked && has_rec_converted && !has_rec_clicked_converted && has_purchase ? transaction_count : 0, //transactions_with_noclickedrec_converted_array.length,
+    "SESSION_TRANSACTION_COUNT_NORECCLICKED_NORECCONVERTED_NORECCLICKEDCONVERTED_HASPURCHASE": !has_rec_clicked && !has_rec_converted && !has_rec_clicked_converted && has_purchase ? transaction_count : 0, //transactions_with_noclickedrec_norecconverted_array.length,       
+    // Item Counts, less good - metrics are somewhat deceptive since they attribute all transaction information based on session behavior
+    //Use case for following metric would be to calculate responder average items per order, does not consider what happens to individual transactions or items in a transaction
+    "SESSION_ITEM_COUNT_HASRECCLICKED_HASRECCONVERTED_HASRECCLICKEDCONVERTED_HASPURCHASE": has_rec_clicked && has_rec_converted && has_rec_clicked_converted && has_purchase ? purchased_item_count : 0, //session_with_recclickedconverted_purchased_items_count,
+    "SESSION_ITEM_COUNT_HASRECCLICKED_HASRECCONVERTED_NORECCLICKEDCONVERTED_HASPURCHASE": has_rec_clicked && has_rec_converted && !has_rec_clicked_converted && has_purchase ? purchased_item_count : 0, //purchased_items_count_with_clicks_and_recconverted,
+    "SESSION_ITEM_COUNT_HASRECCLICKED_NORECCONVERTED_NORECCLICKEDCONVERTED_HASPURCHASE": has_rec_clicked && !has_rec_converted && !has_rec_clicked_converted && has_purchase ? purchased_item_count : 0, //purchased_items_count_with_clicks_norecconverted,
+    "SESSION_ITEM_COUNT_NORECCLICKED_HASRECCONVERTED_NORECCLICKEDCONVERTED_HASPURCHASE": !has_rec_clicked && has_rec_converted && !has_rec_clicked_converted && has_purchase ? purchased_item_count : 0, // purchased_items_count_with_noclicks_recconverted_norecclickedconverted,
+    "SESSION_ITEM_COUNT_NORECCLICKED_NORECCONVERTED_NORECCLICKEDCONVERTED_HASPURCHASE": !has_rec_clicked && !has_rec_converted && !has_rec_clicked_converted && has_purchase ? purchased_item_count : 0, //purchased_items_count_with_noclicks_norecconverted_norecclickedconverted,          
+    // Rec Demand metrics, GOOD - metric is specific to the individual item attribution
+    "ITEM_REVENUE_HASRECCLICKED_HASRECCONVERTED_HASRECCLICKEDCONVERTED_HASPURCHASE": recommended_clicked_revenue,
+    "ITEM_COUNT_HASRECCLICKED_HASRECCONVERTED_HASRECCLICKEDCONVERTED_HASPURCHASE": recommended_clicked_items
+  }
+';
