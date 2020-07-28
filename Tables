@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS session_recommedantion_summary (
+CREATE TABLE IF NOT EXISTS session_recommendation_summary (
 	account_id int not null,	
 	session_date date not null,
 	new_customers int null,
