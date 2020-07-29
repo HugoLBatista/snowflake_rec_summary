@@ -30,6 +30,7 @@ AS '
   
   // Transaction count to be used in multiple metrics depending on what happens in the session
   var transaction_count = Array.from(new Set(PURCHASED.map(purch => purch.transaction_id))).length
+
    
   return {
     // Session Count metrics, straightforward logic based on session level 7 fold evaluation, GOOD - only talks about what happens to a session
@@ -61,6 +62,11 @@ AS '
     "SESSION_ITEM_COUNT_NORECCLICKED_NORECCONVERTED_NORECCLICKEDCONVERTED_HASPURCHASE": !has_rec_clicked && !has_rec_converted && !has_rec_clicked_converted && has_purchase ? purchased_item_count : 0, //purchased_items_count_with_noclicks_norecconverted_norecclickedconverted,          
     // Rec Demand metrics, GOOD - metric is specific to the individual item attribution
     "ITEM_REVENUE_HASRECCLICKED_HASRECCONVERTED_HASRECCLICKEDCONVERTED_HASPURCHASE": recommended_clicked_revenue,
-    "ITEM_COUNT_HASRECCLICKED_HASRECCONVERTED_HASRECCLICKEDCONVERTED_HASPURCHASE": recommended_clicked_items
+    "ITEM_COUNT_HASRECCLICKED_HASRECCONVERTED_HASRECCLICKEDCONVERTED_HASPURCHASE": recommended_clicked_items,
+     //clicktroughs
+    "CLICKTHROUGHS": CLICKED.length,
+    //Recs
+    "IMPRESSIONS": RECOMMENDED.length
+    
   }
 ';
