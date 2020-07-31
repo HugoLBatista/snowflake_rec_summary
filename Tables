@@ -70,3 +70,18 @@ CREATE TABLE IF NOT EXISTS m_session_recommendation_summary (
 	PRIMARY KEY (session_date, account_id)
         ) cluster by (session_date, account_id);
 	
+	
+	CREATE TABLE IF NOT EXISTS m_session_recommendation_product_summary (
+	account_id int not null,	
+	session_date date not null,
+	action_id int null,
+	product_id varchar(16777216),
+        impressions int null,	
+	clickthroughs int null,
+        recommendation_converted int null,
+        recommendation_demand float,    
+        quantity int null,
+        price  float,  
+	
+	PRIMARY KEY (session_date, account_id)
+    ) cluster by (session_date, account_id);
